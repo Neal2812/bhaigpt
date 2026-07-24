@@ -71,6 +71,18 @@ def _build_messages(user_msg: str, history: list[dict] | None) -> list[dict]:
     return messages
 
 
+def _groq_discover_models() -> list[str]:
+    """Ask Groq which chat models this key can actually use (best-effort)."""
+    try:
+        data = _groq_client.models.list().data
+    except Exception as exc:  # noqa: BLE001
+        print(f"[groq] models.list() failed: {exc}")
+        return []
+    skip = ("whisper", "tts", "guard", "embed", "moderation", "vision")
+    ids = [getattr(m, "id", "") for m in data]
+    return [m for m in ids if m and not any(s in m.lower() for s in skip)]
+
+
 def _try_groq(messages: list[dict]) -> str | None:
     key = _groq_key()
     if not key:
@@ -85,8 +97,17 @@ def _try_groq(messages: list[dict]) -> str | None:
         print(f"[groq] init error: {exc}")
         return None
 
-    # Try the known-good model first, then the configured + fallback list. This
-    # survives Groq retiring a model out from under us.
+    def _call(model: str) -> str:
+        resp = _groq_client.chat.completions.create(
+            model=model,
+            messages=messages,
+            max_tokens=config.MAX_REPLY_TOKENS,
+            temperature=0.9,
+            top_p=0.95,
+        )
+        return (resp.choices[0].message.content or "").strip()
+
+    # Known-good model first, then configured + hardcoded fallbacks.
     candidates: list[str] = []
     for m in [_groq_model_ok, config.GROQ_MODEL, *config.GROQ_MODEL_FALLBACKS]:
         if m and m not in candidates:
@@ -95,21 +116,33 @@ def _try_groq(messages: list[dict]) -> str | None:
     last_exc: Exception | None = None
     for model in candidates:
         try:
-            resp = _groq_client.chat.completions.create(
-                model=model,
-                messages=messages,
-                max_tokens=config.MAX_REPLY_TOKENS,
-                temperature=0.9,
-                top_p=0.95,
-            )
+            out = _call(model)
             _groq_model_ok = model  # remember what worked
-            return (resp.choices[0].message.content or "").strip()
+            return out
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
             print(f"[groq] model '{model}' failed: {exc}")
             # Auth / rate-limit errors won't be fixed by another model — stop.
             if not _model_related(exc):
-                break
+                _last_error = f"groq: {_short(exc)}"
+                return None
+
+    # Every hardcoded guess was rejected as a bad model — ask the API what's
+    # actually available on this key and try those. Removes reliance on IDs
+    # I guessed; survives Groq renaming models.
+    for model in _groq_discover_models():
+        if model in candidates:
+            continue
+        try:
+            out = _call(model)
+            _groq_model_ok = model
+            print(f"[groq] auto-selected available model: {model}")
+            return out
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if not _model_related(exc):
+                _last_error = f"groq: {_short(exc)}"
+                return None
 
     if last_exc is not None:
         _last_error = f"groq: {_short(last_exc)}"
@@ -182,7 +215,7 @@ def reply(user_msg: str, history: list[dict] | None = None) -> str:
 
     out = _try_groq(messages) or _try_gemini(messages)
     if not out:
-        detail = f"\n\n<sub>debug: `{_last_error}`</sub>" if _last_error else ""
+        detail = f"\n\n_debug: {_last_error}_" if _last_error else ""
         return (
             "⚠️ Bhai abhi jawab nahi de paaya (key galat, model retire, ya rate "
             "limit?). Thodi der baad try kar." + detail
