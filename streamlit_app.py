@@ -77,6 +77,19 @@ st.markdown(
 [data-testid="stChatInput"]{border:1px solid var(--x-border) !important;
   border-radius:9999px !important;background:var(--x-card) !important;}
 [data-testid="stChatInput"] textarea{color:var(--x-text) !important;}
+
+/* Tweet action bar (cosmetic) */
+.tw-actions{display:flex;justify-content:space-between;max-width:340px;
+  margin-top:11px;color:var(--x-dim);}
+.tw-act{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;
+  transition:color .12s;}
+.tw-act svg{width:18px;height:18px;stroke:currentColor;fill:none;
+  stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
+.tw-reply:hover{color:var(--x-blue);}
+.tw-rt:hover{color:#00ba7c;}
+.tw-like{color:#f91880;}
+.tw-like svg{fill:#f91880;stroke:#f91880;}
+.tw-views:hover,.tw-share:hover{color:var(--x-blue);}
 </style>
 """,
     unsafe_allow_html=True,
@@ -134,6 +147,59 @@ def _head(name: str, handle: str, tick: bool = False) -> str:
             f'<span class="tw-handle">{handle} · now</span></div>')
 
 
+# --- Cosmetic tweet action bar (reply / repost / like / views / share) ------
+_ICON = {
+    "reply": '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 '
+             '8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 '
+             '8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"/>',
+    "rt": '<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>'
+          '<polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>',
+    "like": '<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 '
+            '5.5 0 1 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z"/>',
+    "views": '<line x1="4" y1="20" x2="4" y2="12"/><line x1="10" y1="20" x2="10" '
+             'y2="4"/><line x1="16" y1="20" x2="16" y2="9"/><line x1="22" y1="20"'
+             ' x2="22" y2="14"/>',
+    "share": '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>'
+             '<polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>',
+}
+
+
+def _svg(name: str) -> str:
+    return f'<svg viewBox="0 0 24 24">{_ICON[name]}</svg>'
+
+
+def _count(seed: str, mod: int, base: int = 0) -> int:
+    import hashlib
+    return base + int(hashlib.md5(seed.encode()).hexdigest(), 16) % mod
+
+
+def _fmt(n: int) -> str:
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M".replace(".0M", "M")
+    if n >= 1_000:
+        return f"{n / 1_000:.1f}K".replace(".0K", "K")
+    return str(n)
+
+
+def _actions(text: str, bot: bool = True) -> str:
+    s = text[:48]
+    if bot:  # Bhai is a superstar — big numbers
+        r, rt, lk, vw = (_count(s + "r", 900, 40), _count(s + "t", 6000, 300),
+                         _count(s + "l", 90000, 3000), _count(s + "v", 2_000_000, 80000))
+    else:
+        r, rt, lk, vw = (_count(s + "r", 15), _count(s + "t", 8),
+                         _count(s + "l", 70), _count(s + "v", 4000, 120))
+    return (
+        '<div class="tw-actions">'
+        f'<span class="tw-act tw-reply">{_svg("reply")}{_fmt(r)}</span>'
+        f'<span class="tw-act tw-rt">{_svg("rt")}{_fmt(rt)}</span>'
+        f'<span class="tw-act tw-like">{_svg("like")}{_fmt(lk)}</span>'
+        f'<span class="tw-act tw-views">{_svg("views")}{_fmt(vw)}</span>'
+        f'<span class="tw-act tw-share">{_svg("share")}</span>'
+        '</div>'
+    )
+
+
 for msg in st.session_state.messages:
     is_bot = msg["role"] == "assistant"
     with st.chat_message(msg["role"], avatar=BOT_AVATAR if is_bot else USER_AVATAR):
@@ -143,17 +209,20 @@ for msg in st.session_state.messages:
             unsafe_allow_html=True,
         )
         st.markdown(msg["content"])
+        st.markdown(_actions(msg["content"], bot=is_bot), unsafe_allow_html=True)
 
 if prompt := st.chat_input("Post your reply to Bhai…"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user", avatar=USER_AVATAR):
         st.markdown(_head("You", "@you"), unsafe_allow_html=True)
         st.markdown(prompt)
+        st.markdown(_actions(prompt, bot=False), unsafe_allow_html=True)
 
     with st.chat_message("assistant", avatar=BOT_AVATAR):
         st.markdown(_head("BhaiGPT", "@being_bhaigpt", tick=True), unsafe_allow_html=True)
         with st.spinner("Bhai type kar raha hai…"):
             answer = reply(prompt, st.session_state.messages[:-1])
         st.markdown(answer)
+        st.markdown(_actions(answer, bot=True), unsafe_allow_html=True)
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
