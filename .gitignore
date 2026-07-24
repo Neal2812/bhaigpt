@@ -1,0 +1,28 @@
+# Secrets & env
+.env
+*.env
+!.env.example
+
+# Scraped data & artifacts (never commit tweet dumps / indexes)
+data/
+*.db
+*.db-journal
+*.sqlite
+
+# Embedding index
+*.faiss
+*.npy
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
