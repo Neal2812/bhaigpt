@@ -64,9 +64,20 @@ Fill in `.env`:
 python -m scrape.setup_account     # 1. register the burner account (once)
 python -m scrape.scrape_tweets     # 2. -> data/raw_tweets.jsonl   (resumable)
 python -m process.filter_tweets    # 3. -> data/clean_tweets.jsonl + filter_report.json
-python -m process.build_index      # 4. -> local embedding index
-streamlit run streamlit_app.py     # 5. launch the BhaiGPT web chat (or: python app.py for Gradio)
+python -m process.export_texts     # 4. -> data/tweet_texts.json   (committable corpus, no torch)
+python -m process.build_index      # 5. (optional) local embedding index for full RAG
+streamlit run streamlit_app.py     # 6. launch the BhaiGPT web chat (or: python app.py for Gradio)
 ```
+
+**No burner account?** Skip steps 1–2 and use an **Apify Tweet Scraper** CSV
+export instead (free tier) — download the CSV and run:
+
+```bash
+python -m process.ingest_csv path/to/apify_export.csv   # -> data/raw_tweets.jsonl
+```
+
+then continue from step 3. Step 4 (`export_texts`) is all the hosted app needs;
+step 5 (`build_index`) is only for query-relevant retrieval when running locally.
 
 Inspect `data/filter_report.json` after step 3 to see what got dropped and why —
 tune the keyword lists / thresholds in `process/filter_tweets.py` and `config.py`
@@ -107,8 +118,10 @@ if needed. For a quick terminal test without the UI: `python -m bot.chat`.
 | `config.py` | Paths, model names, target handle, thresholds |
 | `scrape/setup_account.py` | Register burner X account into twscrape |
 | `scrape/scrape_tweets.py` | Pull tweets → `data/raw_tweets.jsonl` |
+| `process/ingest_csv.py` | Apify CSV export → `data/raw_tweets.jsonl` (no burner account needed) |
 | `process/filter_tweets.py` | Remove ads/promo → `clean_tweets.jsonl` + report |
-| `process/build_index.py` | Embed clean tweets → local vector index |
+| `process/export_texts.py` | Clean tweets → `data/tweet_texts.json` (committable, no torch) |
+| `process/build_index.py` | Embed clean tweets → local vector index (full RAG) |
 | `bot/persona.py` | Persona system prompt + style-block builder |
 | `bot/retriever.py` | Retrieval + few-shot; degrades gracefully by data present |
 | `bot/chat.py` | RAG prompt + Groq/Gemini call |

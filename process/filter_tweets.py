@@ -102,6 +102,7 @@ def _promo_reason(rec: dict) -> str | None:
 def _clean_text(text: str) -> str:
     """Light normalization for the kept tweets (used as style corpus)."""
     text = URL_RE.sub("", text)          # drop links; they add no voice
+    text = MENTION_RE.sub("", text)      # drop @handles; tagging isn't his voice
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
