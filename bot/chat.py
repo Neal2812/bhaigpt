@@ -15,7 +15,20 @@ import config
 # Lazily-initialized singletons.
 _retriever: TweetRetriever | None = None
 _groq_client = None
+_groq_model_ok: str | None = None   # first Groq model that worked this session
 _gemini_model = None
+_last_error: str = ""               # short reason the last LLM attempt failed
+
+
+def _short(exc: object, limit: int = 200) -> str:
+    return " ".join(str(exc).split())[:limit]
+
+
+def _model_related(exc: object) -> bool:
+    """Heuristic: does this error look like a bad/retired model (vs. auth)?"""
+    msg = str(exc).lower()
+    return any(k in msg for k in
+               ("model", "not found", "does not exist", "decommission", "deprecat"))
 
 
 # Read keys FRESH from the environment on every call, not once at import. On
@@ -62,22 +75,45 @@ def _try_groq(messages: list[dict]) -> str | None:
     key = _groq_key()
     if not key:
         return None
-    global _groq_client
+    global _groq_client, _groq_model_ok, _last_error
     try:
         if _groq_client is None:
             from groq import Groq
             _groq_client = Groq(api_key=key)
-        resp = _groq_client.chat.completions.create(
-            model=config.GROQ_MODEL,
-            messages=messages,
-            max_tokens=config.MAX_REPLY_TOKENS,
-            temperature=0.9,
-            top_p=0.95,
-        )
-        return (resp.choices[0].message.content or "").strip()
-    except Exception as exc:  # noqa: BLE001 - fall back to Gemini
-        print(f"[groq] error, falling back to Gemini: {exc}")
+    except Exception as exc:  # noqa: BLE001 - lib/init problem
+        _last_error = f"groq: {_short(exc)}"
+        print(f"[groq] init error: {exc}")
         return None
+
+    # Try the known-good model first, then the configured + fallback list. This
+    # survives Groq retiring a model out from under us.
+    candidates: list[str] = []
+    for m in [_groq_model_ok, config.GROQ_MODEL, *config.GROQ_MODEL_FALLBACKS]:
+        if m and m not in candidates:
+            candidates.append(m)
+
+    last_exc: Exception | None = None
+    for model in candidates:
+        try:
+            resp = _groq_client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=config.MAX_REPLY_TOKENS,
+                temperature=0.9,
+                top_p=0.95,
+            )
+            _groq_model_ok = model  # remember what worked
+            return (resp.choices[0].message.content or "").strip()
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            print(f"[groq] model '{model}' failed: {exc}")
+            # Auth / rate-limit errors won't be fixed by another model — stop.
+            if not _model_related(exc):
+                break
+
+    if last_exc is not None:
+        _last_error = f"groq: {_short(last_exc)}"
+    return None
 
 
 def _try_gemini(messages: list[dict]) -> str | None:
@@ -113,6 +149,8 @@ def _try_gemini(messages: list[dict]) -> str | None:
         )
         return (resp.text or "").strip()
     except Exception as exc:  # noqa: BLE001
+        global _last_error
+        _last_error = f"gemini: {_short(exc)}"
         print(f"[gemini] error: {exc}")
         return None
 
@@ -138,13 +176,16 @@ def reply(user_msg: str, history: list[dict] | None = None) -> str:
             "in your .env. Both have free tiers. — BhaiGPT"
         )
 
+    global _last_error
+    _last_error = ""
     messages = _build_messages(user_msg, history)
 
     out = _try_groq(messages) or _try_gemini(messages)
     if not out:
+        detail = f"\n\n<sub>debug: `{_last_error}`</sub>" if _last_error else ""
         return (
-            "⚠️ Dono LLM backends abhi jawab nahi de paaye (key galat ya rate "
-            "limit?). Thodi der baad try kar, bhai."
+            "⚠️ Bhai abhi jawab nahi de paaya (key galat, model retire, ya rate "
+            "limit?). Thodi der baad try kar." + detail
         )
     return _postprocess(out)
 
