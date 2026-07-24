@@ -7,10 +7,27 @@ key is configured at all, we return a clear message instead of failing silently.
 from __future__ import annotations
 
 import os
+import re
 
 from bot import persona
 from bot.retriever import TweetRetriever
 import config
+
+# Emoji / pictographic ranges + variation selectors and ZWJ. Bhai's tweets are
+# text-only, and the user wants no emojis in replies.
+_EMOJI_RE = re.compile(
+    "["
+    "\U0001F1E6-\U0001F1FF"  # regional indicators (flags)
+    "\U0001F300-\U0001FAFF"  # symbols, pictographs, emoji
+    "\U00002600-\U000027BF"  # misc symbols + dingbats
+    "\U00002B00-\U00002BFF"  # misc symbols/arrows
+    "\U0001F000-\U0001F0FF"  # mahjong/dominoes/cards
+    "\U0000FE00-\U0000FE0F"  # variation selectors
+    "\U0000200D"              # zero-width joiner
+    "\U00002700-\U000027BF"
+    "]",
+    flags=re.UNICODE,
+)
 
 # Lazily-initialized singletons.
 _retriever: TweetRetriever | None = None
@@ -72,15 +89,24 @@ def _build_messages(user_msg: str, history: list[dict] | None) -> list[dict]:
 
 
 def _groq_discover_models() -> list[str]:
-    """Ask Groq which chat models this key can actually use (best-effort)."""
+    """Ask Groq which chat models this key can use, ordered by preference."""
     try:
         data = _groq_client.models.list().data
     except Exception as exc:  # noqa: BLE001
         print(f"[groq] models.list() failed: {exc}")
         return []
-    skip = ("whisper", "tts", "guard", "embed", "moderation", "vision")
     ids = [getattr(m, "id", "") for m in data]
-    return [m for m in ids if m and not any(s in m.lower() for s in skip)]
+    usable = [m for m in ids
+              if m and not any(s in m.lower() for s in config.GROQ_MODEL_SKIP)]
+
+    def rank(model: str) -> int:
+        low = model.lower()
+        for i, pref in enumerate(config.GROQ_MODEL_PREFER):
+            if pref in low:
+                return i
+        return len(config.GROQ_MODEL_PREFER)
+
+    return sorted(usable, key=rank)
 
 
 def _try_groq(messages: list[dict]) -> str | None:
@@ -190,11 +216,14 @@ def _try_gemini(messages: list[dict]) -> str | None:
 
 def _postprocess(text: str) -> str:
     text = text.strip().strip('"')
+    text = _EMOJI_RE.sub("", text)              # user wants no emojis
+    text = re.sub(r"\s+([,.!?…])", r"\1", text)  # no space before punctuation
+    text = re.sub(r"[ \t]{2,}", " ", text)       # tidy gaps left by removed emojis
     # Keep it tweet-short: cap at ~4 lines.
-    lines = [ln for ln in text.splitlines() if ln.strip()]
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     if len(lines) > 4:
-        text = "\n".join(lines[:4])
-    return text.strip()
+        lines = lines[:4]
+    return "\n".join(lines).strip()
 
 
 def reply(user_msg: str, history: list[dict] | None = None) -> str:
