@@ -6,6 +6,8 @@ key is configured at all, we return a clear message instead of failing silently.
 """
 from __future__ import annotations
 
+import os
+
 from bot import persona
 from bot.retriever import TweetRetriever
 import config
@@ -14,6 +16,17 @@ import config
 _retriever: TweetRetriever | None = None
 _groq_client = None
 _gemini_model = None
+
+
+# Read keys FRESH from the environment on every call, not once at import. On
+# hosts like Streamlit Cloud the process can start before secrets are injected;
+# a cached import-time snapshot would stay empty until a full reboot.
+def _groq_key() -> str:
+    return (os.getenv("GROQ_API_KEY") or config.GROQ_API_KEY or "").strip()
+
+
+def _gemini_key() -> str:
+    return (os.getenv("GEMINI_API_KEY") or config.GEMINI_API_KEY or "").strip()
 
 
 def _get_retriever() -> TweetRetriever:
@@ -46,13 +59,14 @@ def _build_messages(user_msg: str, history: list[dict] | None) -> list[dict]:
 
 
 def _try_groq(messages: list[dict]) -> str | None:
-    if not config.GROQ_API_KEY:
+    key = _groq_key()
+    if not key:
         return None
     global _groq_client
     try:
         if _groq_client is None:
             from groq import Groq
-            _groq_client = Groq(api_key=config.GROQ_API_KEY)
+            _groq_client = Groq(api_key=key)
         resp = _groq_client.chat.completions.create(
             model=config.GROQ_MODEL,
             messages=messages,
@@ -67,7 +81,8 @@ def _try_groq(messages: list[dict]) -> str | None:
 
 
 def _try_gemini(messages: list[dict]) -> str | None:
-    if not config.GEMINI_API_KEY:
+    key = _gemini_key()
+    if not key:
         return None
     global _gemini_model
     try:
@@ -79,7 +94,7 @@ def _try_gemini(messages: list[dict]) -> str | None:
             m["content"] for m in messages if m["role"] == "system"
         )
         if _gemini_model is None:
-            genai.configure(api_key=config.GEMINI_API_KEY)
+            genai.configure(api_key=key)
             _gemini_model = genai.GenerativeModel(
                 config.GEMINI_MODEL, system_instruction=system
             )
@@ -116,10 +131,11 @@ def reply(user_msg: str, history: list[dict] | None = None) -> str:
     if not user_msg or not user_msg.strip():
         return "Bol bhai, kya baat hai? 😎"
 
-    if not config.GROQ_API_KEY and not config.GEMINI_API_KEY:
+    if not _groq_key() and not _gemini_key():
         return (
-            "⚠️ Koi LLM key set nahi hai. Add GROQ_API_KEY or GEMINI_API_KEY to "
-            "your .env (both have free tiers) and restart. — BhaiGPT"
+            "⚠️ Koi LLM key set nahi hai. Set GROQ_API_KEY (or GEMINI_API_KEY) — "
+            "in Streamlit: Manage app → Settings → Secrets, then Reboot; locally: "
+            "in your .env. Both have free tiers. — BhaiGPT"
         )
 
     messages = _build_messages(user_msg, history)
