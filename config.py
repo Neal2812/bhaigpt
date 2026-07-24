@@ -44,14 +44,22 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 # Groq retires models periodically (e.g. llama-3.3-70b-versatile was
 # decommissioned 2026-06-17). We try the configured model first, then these
 # fallbacks in order, so a single deprecation can't take the app down.
-GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+# Prefer Qwen — better at casual multilingual/Hinglish than the OpenAI model —
+# then fall back to models we know work. Auto-discovery (bot/chat.py) covers any
+# ID that's wrong or retired, so this list just sets preference/order.
+GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.6-27b")
 GROQ_MODEL_FALLBACKS = [
-    "openai/gpt-oss-20b",
-    "openai/gpt-oss-120b",
     "qwen/qwen3.6-27b",
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
     "gemma2-9b-it",
     "llama-3.3-70b-versatile",  # legacy; kept last in case it lingers
 ]
+# When auto-discovering, prefer these substrings (in order); skip reasoning
+# models that emit verbose <think> output unsuitable for short tweet replies.
+GROQ_MODEL_PREFER = ("qwen3", "qwen", "gpt-oss", "gemma", "llama")
+GROQ_MODEL_SKIP = ("whisper", "tts", "guard", "embed", "moderation", "vision",
+                   "qwq", "deepseek", "-r1", "reasoning")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 MAX_REPLY_TOKENS = 160        # keep replies short & tweet-like
 
