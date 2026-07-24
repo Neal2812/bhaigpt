@@ -215,6 +215,11 @@ def _try_gemini(messages: list[dict]) -> str | None:
 
 
 def _postprocess(text: str) -> str:
+    text = text.strip()
+    # Strip reasoning-model output: complete <think>...</think> blocks, and any
+    # trailing unclosed <think> (truncated reasoning that never reached an answer).
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<think>.*$", "", text, flags=re.DOTALL | re.IGNORECASE)
     text = text.strip().strip('"')
     text = _EMOJI_RE.sub("", text)              # user wants no emojis
     text = re.sub(r"\s+([,.!?…])", r"\1", text)  # no space before punctuation
@@ -249,7 +254,8 @@ def reply(user_msg: str, history: list[dict] | None = None) -> str:
             "⚠️ Bhai abhi jawab nahi de paaya (key galat, model retire, ya rate "
             "limit?). Thodi der baad try kar." + detail
         )
-    return _postprocess(out)
+    final = _postprocess(out)
+    return final or "Haan bhai bol, kya chah raha hai?"
 
 
 if __name__ == "__main__":
