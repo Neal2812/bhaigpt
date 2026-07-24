@@ -37,6 +37,29 @@ st.warning(
     icon="⚠️",
 )
 
+# --- Key diagnostics (shown only when no usable key is detected) -------------
+# Reveals *names* of configured secrets (never values) so a misnamed secret —
+# e.g. GROK_API_KEY instead of GROQ_API_KEY — is easy to spot.
+_key_detected = bool(os.getenv("GROQ_API_KEY") or os.getenv("GEMINI_API_KEY"))
+if not _key_detected:
+    try:
+        _secret_names = list(st.secrets.keys())
+    except Exception:  # noqa: BLE001
+        _secret_names = []
+    st.error(
+        "No LLM key detected. Set a **Groq** key (from console.groq.com, starts "
+        "with `gsk_`) under **Manage app → Settings → Secrets**, exactly as:\n\n"
+        "```toml\nGROQ_API_KEY = \"gsk_your_key\"\n```",
+        icon="🔑",
+    )
+    with st.expander("🔍 Diagnostics — which secrets does the app see?"):
+        st.write("**Secret names found:**", _secret_names or "— none —")
+        st.write("**Names it needs:** `GROQ_API_KEY` (note the Q) or `GEMINI_API_KEY`")
+        if any(n.upper() in ("GROK_API_KEY", "GROK", "XAI_API_KEY") for n in _secret_names):
+            st.write("⚠️ Found a **GROK** secret — that's xAI's Grok, a different "
+                     "service. Rename it to **GROQ_API_KEY** and use a key from "
+                     "console.groq.com.")
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
