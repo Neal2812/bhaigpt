@@ -41,7 +41,17 @@ FEWSHOT_N = 8                 # curated example tweets in the persona prompt
 # --- LLM --------------------------------------------------------------------
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+# Groq retires models periodically (e.g. llama-3.3-70b-versatile was
+# decommissioned 2026-06-17). We try the configured model first, then these
+# fallbacks in order, so a single deprecation can't take the app down.
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+GROQ_MODEL_FALLBACKS = [
+    "openai/gpt-oss-20b",
+    "openai/gpt-oss-120b",
+    "qwen/qwen3.6-27b",
+    "gemma2-9b-it",
+    "llama-3.3-70b-versatile",  # legacy; kept last in case it lingers
+]
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 MAX_REPLY_TOKENS = 160        # keep replies short & tweet-like
 
