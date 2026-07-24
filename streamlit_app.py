@@ -13,16 +13,16 @@ import os
 
 import streamlit as st
 
-# Bridge Streamlit secrets -> environment BEFORE importing the engine, because
-# config.py reads the keys from the environment at import time. setdefault means
-# a real local env var still wins.
+# Bridge Streamlit secrets -> environment on every rerun, BEFORE importing the
+# engine. The engine reads keys fresh from the environment, so a secret added
+# after first launch propagates on the next rerun (no reboot strictly needed).
 for _key in ("GROQ_API_KEY", "GEMINI_API_KEY", "GROQ_MODEL", "GEMINI_MODEL"):
     try:
         val = st.secrets[_key]  # may raise if no secrets file at all
     except Exception:  # noqa: BLE001
         val = None
     if val:
-        os.environ.setdefault(_key, str(val))
+        os.environ[_key] = str(val)
 
 from bot.chat import reply  # noqa: E402 - must follow the secrets bridge above
 
