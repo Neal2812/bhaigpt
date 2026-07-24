@@ -1,0 +1,11 @@
+# X / Twitter dark theme for BhaiGPT.
+[theme]
+base = "dark"
+primaryColor = "#1d9bf0"            # X blue
+backgroundColor = "#000000"          # X "lights out" black
+secondaryBackgroundColor = "#16181c" # card surface
+textColor = "#e7e9ea"
+font = "sans serif"
+
+[client]
+toolbarMode = "minimal"
