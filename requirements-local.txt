@@ -1,0 +1,8 @@
+# Full LOCAL pipeline: scraping + local embeddings + Gradio, on top of the lean
+# hosted core. Install with:
+#     pip install -r requirements-local.txt
+-r requirements.txt
+
+twscrape>=0.13.0            # tweet scraping (needs a burner X account)
+sentence-transformers>=2.6.0  # local embeddings for query-relevant retrieval
+gradio>=4.44.0             # alternative local chat UI (app.py)

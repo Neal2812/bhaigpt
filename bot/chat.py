@@ -26,12 +26,16 @@ def _get_retriever() -> TweetRetriever:
 def _build_messages(user_msg: str, history: list[dict] | None) -> list[dict]:
     r = _get_retriever()
     anchors = r.anchors(user_msg)
-    style_block = persona.build_style_block(r.fewshot, anchors)
 
     messages: list[dict] = [
         {"role": "system", "content": persona.SYSTEM_PROMPT},
-        {"role": "system", "content": style_block},
     ]
+    # Only add the tweet-reference block if we actually have tweets; otherwise
+    # the persona prompt alone carries the style (persona-only mode).
+    if r.fewshot or anchors:
+        messages.append(
+            {"role": "system", "content": persona.build_style_block(r.fewshot, anchors)}
+        )
     for turn in (history or [])[-6:]:  # keep context small & tweet-like
         role = turn.get("role")
         content = turn.get("content", "")
@@ -118,10 +122,7 @@ def reply(user_msg: str, history: list[dict] | None = None) -> str:
             "your .env (both have free tiers) and restart. — BhaiGPT"
         )
 
-    try:
-        messages = _build_messages(user_msg, history)
-    except FileNotFoundError as exc:
-        return f"⚠️ {exc}"
+    messages = _build_messages(user_msg, history)
 
     out = _try_groq(messages) or _try_gemini(messages)
     if not out:

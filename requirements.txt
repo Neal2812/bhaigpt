@@ -1,16 +1,9 @@
-# Scraping (free, no paid API) — needs a burner X account's cookies
-twscrape>=0.13.0
-
-# Local, free embeddings for retrieval (no API key)
-sentence-transformers>=2.6.0
+# Core runtime for the HOSTED chatbot. Streamlit Community Cloud installs this
+# file. Kept lean (no torch) so free deploys build fast and reliably — the
+# hosted app runs in persona / few-shot mode. For the full local pipeline
+# (scraping + embeddings + Gradio), use requirements-local.txt instead.
+streamlit>=1.36.0
+groq>=0.11.0                 # primary LLM  (free tier)
+google-generativeai>=0.7.0  # fallback LLM (free tier)
 numpy>=1.24.0
-
-# Free-tier hosted LLMs
-groq>=0.11.0                 # primary  (free tier)
-google-generativeai>=0.7.0  # fallback (free tier)
-
-# Web chat UI (free to host on Hugging Face Spaces)
-gradio>=4.44.0
-
-# Config
 python-dotenv>=1.0.0

@@ -3,13 +3,16 @@
 *.env
 !.env.example
 
-# Scraped data & artifacts (never commit tweet dumps / indexes)
-data/
+# Scraped data & artifacts — keep raw dumps, DBs, and heavy indexes out of git.
+# EXCEPTION: data/tweet_texts.json (the plain tweet text list) may be committed
+# so the hosted app stays grounded in real tweets without shipping torch.
+data/*
+!data/tweet_texts.json
 *.db
 *.db-journal
 *.sqlite
 
-# Embedding index
+# Embedding index (heavy; hosted app runs without it)
 *.faiss
 *.npy
 
